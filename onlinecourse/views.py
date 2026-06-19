@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 # <HINT> Import any new Models here
-from .models import Course, Enrollment
+from .models import Course, Enrollment, Question, Choice, Submission
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
@@ -132,5 +132,44 @@ def extract_answers(request):
         # Calculate the total score
 #def show_exam_result(request, course_id, submission_id):
 
+def submit(request, course_id):
+    course = get_object_or_404(Course, pk=course_id)
+    user = request.user
 
+    if not user.is_authenticated:
+        return redirect('onlinecourse:index')
 
+    enrollment = get_object_or_404(Enrollment, user=user, course=course)
+
+    submission = Submission.objects.create(enrollment=enrollment)
+
+    selected_ids = extract_answers(request)
+
+    choices = Choice.objects.filter(id__in=selected_ids)
+
+    submission.choices.set(choices)
+
+    submission.save()
+
+    return HttpResponseRedirect(
+        reverse('onlinecourse:show_exam_result',
+                args=(course.id, submission.id))
+    )
+def show_exam_result(request, course_id, submission_id):
+
+    course = get_object_or_404(Course, pk=course_id)
+    submission = get_object_or_404(Submission, pk=submission_id)
+
+    selected_ids = submission.choices.values_list('id', flat=True)
+
+    total_score = 0
+
+    for question in course.question_set.all():
+        if question.is_get_score(list(selected_ids)):
+            total_score += question.grade
+
+    return render(request, 'onlinecourse/exam_result_bootstrap.html', {
+        'course': course,
+        'grade': total_score,
+        'selected_ids': list(selected_ids)
+    })
